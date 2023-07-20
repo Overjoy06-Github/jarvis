@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import requests
 from anime_adventures import *
 import random
+from custom_emojis import custom_emojis
 
 # intents because discord decided to add a shit feature
 intents = discord.Intents.default()
@@ -20,9 +21,23 @@ client = commands.Bot(command_prefix='Jarvis ', description="Test Bot", intents=
 async def on_ready():
     print(f'{client.user.name} is now running.')
 
+# dictionary
+evolution_mappings = {
+    'Akeno evo': 'Akena (Fallen Angel)',
+    'Akena evo': 'Akena (Fallen Angel)'
+}
+
 # anime adventures command lol
 @client.command(name='character_info',aliases=['aa', 'char_info', 'Aa'], help='Fetch information about an Anime Adventures character.')
 async def character_info(ctx, *, character_name):
+    original_character_name = character_name  # Store the original input for later use
+    print(original_character_name)
+    character_name_lower = character_name.lower()
+    for key in evolution_mappings.keys():
+        if character_name_lower == key:
+            character_name = evolution_mappings[key]
+            break
+
     character = character_name.title().replace(" ", "_")
     print(f"User's message: {character_name}")
     try:
@@ -30,17 +45,24 @@ async def character_info(ctx, *, character_name):
         soup = BeautifulSoup(html_text, 'html.parser')
 
         #character name | Metal Knight (Bofoi)
-        character_name = soup.find('h1', class_='page-header__title')
-        character_name = ' '.join(character_name.stripped_strings)
+        character_name_elem = soup.find('h1', class_='page-header__title')
+        if character_name_elem:
+            character_name = ' '.join(character_name_elem.stripped_strings)
 
         #character evolution name | Metal Knight (Arsenal)
         character_div = soup.find('div', class_='mobile-hidden')
-        character_evolution_name = character_div.text.strip()
+        if character_div:
+            character_evolution_name = character_div.text.strip()
+        else:
+            character_evolution_name = "Evolution name not available."
 
         #description | Metal Knight  is a Mythical unit based on Metal Knight, from the anime One Punch Man. He is only obtainable through summons, and requires 5k kills to evolve.
-        description = soup.find('div', class_='mw-parser-output').find('p')
-        extracted_text = soup.find('p').text.strip()
-        modified_text = extracted_text.replace("MythicalMythical", "Mythical")
+        description_elem = soup.find('div', class_='mw-parser-output').find('p')
+        if description_elem:
+            extracted_text = description_elem.text.strip()
+            modified_text = extracted_text.replace("MythicalMythical", "Mythical")
+        else:
+            modified_text = "Description not available."
 
         # images | non_shiny_image | shiny_image
         figures = soup.select('section.pi-item.pi-panel.pi-border-color.wds-tabber figure')
@@ -55,35 +77,45 @@ async def character_info(ctx, *, character_name):
                 shiny_image = image_url
 
         captions = soup.find_all('figcaption', class_='pi-item-spacing pi-caption')
-        caption1 = captions[0].get_text(strip=True)
-        caption2 = captions[1].get_text(strip=True)
+        caption1 = captions[0].get_text(strip=True) if captions else "..."
+        if len(captions) > 1:
+            caption2 = captions[1].get_text(strip=True)
+        else:
+            caption2 = caption1
 
-        #formatted_materials_str
+
+        def format_material(material):
+            quantity, item = material
+            item = item.strip()
+
+            if item.startswith("Star Fruit"):
+                base_item = "StarFruit"
+                if item in custom_emojis:
+                    emoji_id = custom_emojis[item]
+                    emoji_name = base_item + "".join([word.capitalize().replace('(', '_').replace(')', '').replace("'", "") for word in item.split()[2:]])
+                    return f"{quantity}x {item} <:{emoji_name}:{emoji_id}>"
+
+            if item in custom_emojis:
+                emoji_id = custom_emojis[item]
+                emoji_name = item.replace(' ', '_').replace("'", "") 
+                return f"{quantity}x {item} <:{emoji_name}:{emoji_id}>"
+            else:
+                return f"{quantity}x {item}"
+    
         required_items_row = soup.select('table.article-table tr')[0]
         td_elements = required_items_row.find_all('td')
         materials = td_elements[1].get_text(strip=False).replace('Required Items:', '').replace('\n', '').split('x')
         materials = [material.strip() for material in materials if material.strip()]
-        def format_material(material):
-            return f"{material[0]}x {material[1]}"
 
         formatted_materials = [format_material(material.split(maxsplit=1)) for material in materials]
         formatted_materials_str = '\n'.join(formatted_materials)
 
-        '''
-        response = f"**Character Name:** {character_name}\n" \ ✅
-                   f"**Description:** {modified_text}\n" \ ✅
-                   f"**Character Evolution:** {character_evolution_name}\n" \ ✅
-                   f"**Formatted Materials:**\n{formatted_materials_str}\n" \
-                   f"**Non-Shiny Image:** {non_shiny_image}\n" \
-                   f"**Shiny Image:** {shiny_image}"
-        '''
         embed = discord.Embed(title=character_name,description=modified_text,color=discord.Color.blue())
         embed.add_field(name="**Materials:**", value=formatted_materials_str, inline=False)
-        embed.add_field(name="**Results:**", value=character_evolution_name, inline=True)
-        embed.add_field(name="**Normal Version:**", value="*"+caption1+"*", inline=False)
+        embed.add_field(name="**Results:**", value=character_evolution_name, inline=False)
+        embed.add_field(name="**Normal Version:**", value="*"+caption1+"*", inline=True)
         embed.set_image(url=non_shiny_image)
         embed.set_footer(text="Anime Adventures Web Scraper powered by Jarvis.", icon_url="https://media.discordapp.net/attachments/1130781031511900252/1131308552330432632/aa.png")
-        embed.url = f"https://animeadventures.fandom.com/wiki/{character_name}"
         embedVar = discord.Embed(description="**Shiny Version:**\n*"+caption2+"*",color=discord.Color.blue())
         embedVar.set_image(url=shiny_image)
         embedVar.set_footer(text="Anime Adventures Web Scraper powered by Jarvis.", icon_url="https://media.discordapp.net/attachments/1130781031511900252/1131308552330432632/aa.png")
