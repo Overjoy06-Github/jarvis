@@ -1,8 +1,8 @@
 from bs4 import BeautifulSoup
 import requests
-import re
+from custom_emojis import custom_emojis
 
-character = "Heathcliff".title()
+character = "Akena".title()
 html_text = requests.get(f'https://animeadventures.fandom.com/wiki/{character}').text
 soup = BeautifulSoup(html_text, 'html.parser')
 
@@ -34,11 +34,12 @@ for i, figure in enumerate(figures):
 
 # Captions for different versions | caption1 - normal | caption2 - shiny
 captions = soup.find_all('figcaption', class_='pi-item-spacing pi-caption')
-caption1 = captions[0].get_text(strip=True)
-caption2 = captions[1].get_text(strip=True)
+caption1 = captions[0].get_text(strip=True) if captions else "..."
+if len(captions) > 1:
+    caption2 = captions[1].get_text(strip=True)
+else:
+    caption2 = caption1
 
-print(caption1)
-print(caption2)
 '''formatted_materials_str
 # 1 Metal Knight
 35 Full Power Core
@@ -48,17 +49,35 @@ print(caption2)
 4 Star Fruit (Green)
 1 Star Fruit (Rainbow)
 '''
+def format_material(material):
+    quantity, item = material
+    item = item.strip()
+
+    # Handle different variations of "Star Fruit" separately
+    if item.startswith("Star Fruit"):
+        base_item = "StarFruit"
+        if item in custom_emojis:
+            emoji_id = custom_emojis[item]
+            emoji_name = base_item + "".join([word.capitalize().replace('(', '_').replace(')', '').replace("'", "") for word in item.split()[2:]])
+            return f"{quantity}x {item} <:{emoji_name}:{emoji_id}>"
+
+    if item in custom_emojis:
+        emoji_id = custom_emojis[item]
+        emoji_name = item.replace(' ', '_').replace("'", "")  # Remove the apostrophe from the emoji name
+        return f"{quantity}x {item} <:{emoji_name}:{emoji_id}>"
+    else:
+        return f"{quantity}x {item}"
+    
+# Your existing code
 required_items_row = soup.select('table.article-table tr')[0]
 td_elements = required_items_row.find_all('td')
 materials = td_elements[1].get_text(strip=False).replace('Required Items:', '').replace('\n', '').split('x')
 materials = [material.strip() for material in materials if material.strip()]
-def format_material(material):
-    return f"{material[0]}x {material[1]}"
 
 formatted_materials = [format_material(material.split(maxsplit=1)) for material in materials]
 formatted_materials_str = '\n'.join(formatted_materials)
 
-
+print(formatted_materials_str)
 
 # Extract and download the images
 image_elements = soup.find_all('img')
