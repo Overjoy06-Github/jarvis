@@ -21,69 +21,79 @@ async def on_ready():
     print(f'{client.user.name} is now running.')
 
 # anime adventures command lol
-@client.command(name='aa', help='Find information about Anime Adventures units.', pass_context=True, case_insensitive=True)
-async def aa(ctx, *, character_name):
-    character_name = character_name.title().replace(" ", "_")
-    character = character_name.lower()
+@client.command(name='character_info',aliases=['aa', 'char_info', 'Aa'], help='Fetch information about an Anime Adventures character.')
+async def character_info(ctx, *, character_name):
+    character = character_name.title().replace(" ", "_")
     print(f"User's message: {character_name}")
-    html_text = requests.get(f'https://animeadventures.fandom.com/wiki/{character}').text
-    soup = BeautifulSoup(html_text, 'lxml')
-    error_checker = soup.find('h1', class_='page-header__title')
+    try:
+        html_text = requests.get(f'https://animeadventures.fandom.com/wiki/{character}').text
+        soup = BeautifulSoup(html_text, 'html.parser')
 
-    if error_checker is not None:
-        character_needed = error_checker.text
-        character_evolution_element = soup.find('div', class_='mobile-hidden')
+        #character name | Metal Knight (Bofoi)
+        character_name = soup.find('h1', class_='page-header__title')
+        character_name = ' '.join(character_name.stripped_strings)
 
-        if character_evolution_element is not None:
-            character_evolution_name = character_evolution_element.text
-            description = soup.find('div', class_='mw-parser-output').find('p').text
-            description = description.replace("MythicalMythical", "Mythical")
-            banner_raw = soup.find('figure', class_='pi-item pi-image').find('img').get('src')
-            imgs = soup.findAll('div', class_='mw-parser-output')
+        #character evolution name | Metal Knight (Arsenal)
+        character_div = soup.find('div', class_='mobile-hidden')
+        character_evolution_name = character_div.text.strip()
 
-            images = []
-            for div in imgs:
-                img_tags = div.findAll('img')
-                for img in img_tags:
-                    src = img['src']
-                    if 'static' in src:
-                        images.append(src)
+        #description | Metal Knight  is a Mythical unit based on Metal Knight, from the anime One Punch Man. He is only obtainable through summons, and requires 5k kills to evolve.
+        description = soup.find('div', class_='mw-parser-output').find('p')
+        extracted_text = soup.find('p').text.strip()
+        modified_text = extracted_text.replace("MythicalMythical", "Mythical")
 
-            evolution_materials = soup.find('table', class_='article-table game-font-face').text
-            split_text = re.split(r"(x\d+)\s*", evolution_materials)
-            transformed_text = ' '.join(split_text)
-            final = transformed_text.split()
-            final = final[:-5]
+        # images | non_shiny_image | shiny_image
+        figures = soup.select('section.pi-item.pi-panel.pi-border-color.wds-tabber figure')
+        non_shiny_image = None
+        shiny_image = None
+        for i, figure in enumerate(figures):
+            image_url = figure.find('img', class_='pi-image-thumbnail')['src']
 
-            def listToString(s):
-                str1 = " ".join(s)  # Add space between elements
-                return str1
+            if i == 0:
+                non_shiny_image = image_url
+            elif i == 1:
+                shiny_image = image_url
 
-            actual_final = listToString(final)
-            actual_final = re.sub(r"\bStar Fruit \b", "Star Fruit <:Star_Fruit:1131211285887987785>", actual_final, count=1)
-            actual_final = re.sub(r"\bStar Fruit \(Blue\)(?!\S)",
-                                  r"Star Fruit (Blue) <:Star_Fruit_Blue:1131211288454905956>", actual_final)
-            actual_final = re.sub(r"\bStar Fruit \(Green\)(?!\S)",
-                                  r"Star Fruit (Green) <:Star_Fruit_Green:1131211294058496081>", actual_final)
-            actual_final = re.sub(r"\bStar Fruit \(Pink\)(?!\S)",
-                                  r"Star Fruit (Pink) <:Star_Fruit_Pink:1131211253486989413>", actual_final)
-            actual_final = re.sub(r"\bStar Fruit \(Rainbow\)(?!\S)",
-                                  r"Star Fruit (Rainbow) <:Star_Fruit_Rainbow:1131211258696319016>", actual_final)
-            actual_final = re.sub(r"\bStar Fruit \(Red\)(?!\S)",
-                                  r"Star Fruit (Red) <:Star_Fruit_Red:1131211261602955294>", actual_final)
-            actual_final = actual_final.replace("x", "\nx")
+        captions = soup.find_all('figcaption', class_='pi-item-spacing pi-caption')
+        caption1 = captions[0].get_text(strip=True)
+        caption2 = captions[1].get_text(strip=True)
 
-            embedVar = discord.Embed(title=character_needed, description=description, color=0x00ff00)
-            embedVar.add_field(name="Materials:", value=actual_final, inline=True)
-            embedVar.add_field(name="Result", value=character_evolution_name, inline=True)
-            embedVar.set_thumbnail(url=images[1])
-            embedVar.set_image(url=images[2])
+        #formatted_materials_str
+        required_items_row = soup.select('table.article-table tr')[0]
+        td_elements = required_items_row.find_all('td')
+        materials = td_elements[1].get_text(strip=False).replace('Required Items:', '').replace('\n', '').split('x')
+        materials = [material.strip() for material in materials if material.strip()]
+        def format_material(material):
+            return f"{material[0]}x {material[1]}"
 
-            await ctx.send(embed=embedVar)
-        else:
-            await ctx.send("Character evolution name not found.")
-    else:
-        await ctx.send("Character not found.")
+        formatted_materials = [format_material(material.split(maxsplit=1)) for material in materials]
+        formatted_materials_str = '\n'.join(formatted_materials)
+
+        '''
+        response = f"**Character Name:** {character_name}\n" \ ✅
+                   f"**Description:** {modified_text}\n" \ ✅
+                   f"**Character Evolution:** {character_evolution_name}\n" \ ✅
+                   f"**Formatted Materials:**\n{formatted_materials_str}\n" \
+                   f"**Non-Shiny Image:** {non_shiny_image}\n" \
+                   f"**Shiny Image:** {shiny_image}"
+        '''
+        embed = discord.Embed(title=character_name,description=modified_text,color=discord.Color.blue())
+        embed.add_field(name="**Materials:**", value=formatted_materials_str, inline=False)
+        embed.add_field(name="**Results:**", value=character_evolution_name, inline=True)
+        embed.add_field(name="**Normal Version:**", value="*"+caption1+"*", inline=False)
+        embed.set_image(url=non_shiny_image)
+        embed.set_footer(text="Anime Adventures Web Scraper powered by Jarvis.", icon_url="https://media.discordapp.net/attachments/1130781031511900252/1131308552330432632/aa.png")
+        embed.url = f"https://animeadventures.fandom.com/wiki/{character_name}"
+        embedVar = discord.Embed(description="**Shiny Version:**\n*"+caption2+"*",color=discord.Color.blue())
+        embedVar.set_image(url=shiny_image)
+        embedVar.set_footer(text="Anime Adventures Web Scraper powered by Jarvis.", icon_url="https://media.discordapp.net/attachments/1130781031511900252/1131308552330432632/aa.png")
+
+        await ctx.send(embed=embed)
+        await ctx.send(embed=embedVar)
+
+    except Exception as e:
+        print(f"Error fetching information for {character_name}: {e}")
+        await ctx.send("Character not found or error occurred while fetching information.")
 
 # check what the person's spotify is playing
 @client.command(name='spotify', help='Find out what songs a person is listening to.')
