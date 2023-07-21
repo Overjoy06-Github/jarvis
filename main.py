@@ -7,14 +7,14 @@ import requests
 from anime_adventures import *
 import random
 from custom_emojis import custom_emojis
+from dotenv import load_dotenv
 
-# intents because discord decided to add a shit feature
-intents = discord.Intents.default()
 intents = discord.Intents.all()
 
-# some random bullshit
+load_dotenv()
 TOKEN = os.getenv("TOKEN")
 client = commands.Bot(command_prefix='Jarvis ', description="Test Bot", intents=intents)
+ANILIST_BASE_URL = 'https://graphql.anilist.co'
 
 # prints when the bot is running/online
 @client.event
@@ -27,7 +27,72 @@ evolution_mappings = {
     'Akena evo': 'Akena (Fallen Angel)'
 }
 
-# anime adventures command lol
+# anime command
+@client.command(name='anime', help='Fetch information about any anime.')
+async def fetch_anime_info(ctx, *, anime_name):
+    def get_anime_info(anime_name):
+        query = '''
+        query ($search: String) {
+            Media(search: $search, type: ANIME) {
+                title {
+                    english
+                }
+                episodes
+                averageScore
+                description
+                coverImage {
+                    large
+                }
+            }
+        }
+        '''
+
+        variables = {
+            'search': anime_name
+        }
+
+        # Make a request to the AniList API to get anime details
+        response = requests.post(ANILIST_BASE_URL, json={'query': query, 'variables': variables})
+        data = response.json()
+
+        if 'data' in data and data['data']['Media']:
+            anime = data['data']['Media']
+            title = anime['title']['english'] or anime_name
+            episodes = anime['episodes']
+            score = anime['averageScore']
+            synopsis = anime['description']
+            image_url = anime['coverImage']['large']
+
+            anime_info = {
+                'title': title,
+                'episodes': episodes,
+                'score': score,
+                'synopsis': synopsis,
+                'image_url': image_url
+            }
+
+            return anime_info
+        else:
+            return None
+
+    anime_info = get_anime_info(anime_name)
+    if anime_info:
+        title = anime_info['title']
+        episodes = anime_info['episodes']
+        score = anime_info['score']
+        synopsis = anime_info['synopsis']
+        image_url = anime_info['image_url']
+
+        embed = discord.Embed(title=title, description=synopsis, color=discord.Color.blue())
+        embed.add_field(name="**Episodes:**", value=episodes, inline=False)
+        embed.add_field(name="**Score:**", value=score, inline=False)
+        embed.set_image(url=image_url)
+
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send(f"Anime '{anime_name}' not found.")
+
+# Web scraping for animeadventures.fandom.com
 @client.command(name='character_info',aliases=['aa', 'char_info', 'Aa'], help='Fetch information about an Anime Adventures character.')
 async def character_info(ctx, *, character_name):
     original_character_name = character_name  # Store the original input for later use
