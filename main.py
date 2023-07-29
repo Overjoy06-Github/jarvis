@@ -1,13 +1,12 @@
-import discord
 from discord.ext import commands
-import os
-from discord import Spotify
-from bs4 import BeautifulSoup
-import requests
 from anime_adventures import *
-import random
-from custom_emojis import custom_emojis
 from dotenv import load_dotenv
+from discord import Spotify
+from characterai import PyAsyncCAI
+import asyncio
+import discord
+import random
+import os
 
 intents = discord.Intents.all()
 
@@ -15,17 +14,54 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 client = commands.Bot(command_prefix='Jarvis ', description="Test Bot", intents=intents)
 ANILIST_BASE_URL = 'https://graphql.anilist.co'
+chai_token = os.getenv("CHAI_TOKEN")
 
-# prints when the bot is running/online
+@client.command()
+async def talk(ctx, *, message: str):
+    async with asyncio.timeout(60):
+        cai_client = PyAsyncCAI(chai_token)
+        await cai_client.start()
+        char = "1U5b4Nuuf3LnBLvAbaxUfllTYvttzWH2m4hjvj5ubfE"
+        chat = await cai_client.chat.get_chat(char)
+        history_id = chat["external_id"]
+        participants = chat["participants"]
+        print(message)
+
+        if not participants[0]["is_human"]:
+            tgt = participants[0]["user"]["username"]
+        else:
+            tgt = participants[1]["user"]["username"]
+
+        try:
+            data = await asyncio.wait_for(
+                cai_client.chat.send_message(
+                    char, message, history_external_id=history_id, tgt=tgt
+                ),
+                timeout=30,
+            )
+            name = data["src_char"]["participant"]["name"]
+            text = data["replies"][0]["text"]
+
+            cai_response = f"**{name}:**  `{text}`"
+            print(cai_response)
+            await ctx.send(cai_response)
+
+        except asyncio.TimeoutError:
+            await ctx.send("The conversation timed out.")
+
 @client.event
 async def on_ready():
     print(f'{client.user.name} is now running.')
 
-# dictionary
 evolution_mappings = {
     'Akeno evo': 'Akena (Fallen Angel)',
     'Akena evo': 'Akena (Fallen Angel)'
 }
+
+@client.command(name='8ball', help='Ask the 8-ball a question and receive a yes or no answer!')
+async def eight_ball(ctx, *, question: str):
+    responses = ["Yes", "No"]
+    await ctx.send(f'Question: {question}\nAnswer: {random.choice(responses)}')
 
 # anime command
 @client.command(name='anime', help='Fetch information about any anime.')
@@ -237,6 +273,5 @@ async def goodnight(ctx):
     if not ctx.author.bot:
         response = random.choice(goodnight_messages)
         await ctx.send(response)
-
 
 client.run(TOKEN)
