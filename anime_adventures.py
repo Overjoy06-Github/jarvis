@@ -2,9 +2,11 @@ from bs4 import BeautifulSoup
 import requests
 from custom_emojis import custom_emojis
 
-character = "Akena".title()
+character = "Yoshina".title()
 html_text = requests.get(f'https://animeadventures.fandom.com/wiki/{character}').text
 soup = BeautifulSoup(html_text, 'html.parser')
+character_names = requests.get('https://animeadventures.fandom.com/wiki/Unit_List').text
+character_dict = BeautifulSoup(character_names, 'html.parser')
 
 #character name | Metal Knight (Bofoi)
 character_name = soup.find('h1', class_ = 'page-header__title')
@@ -77,8 +79,37 @@ materials = [material.strip() for material in materials if material.strip()]
 formatted_materials = [format_material(material.split(maxsplit=1)) for material in materials]
 formatted_materials_str = '\n'.join(formatted_materials)
 
-print(formatted_materials_str)
-
 # Extract and download the images
 image_elements = soup.find_all('img')
 image_urls = [image['src'] for image in image_elements]
+
+damage_type = soup.find_all('div', class_='pi-data-value pi-font')
+damage_type1 = damage_type[4].get_text(strip=True) if captions else "..."
+damage_type2 = damage_type[5].get_text(strip=True) if captions else "..."
+damage_type3 = damage_type[6].get_text(strip=True) if captions else "..."
+
+def get_custom_emoji(name):
+    return f"<:{name}:{custom_emojis.get(name, '')}>"
+
+if damage_type3 in custom_emojis:
+    damage_type3 = f"{damage_type3} {get_custom_emoji(damage_type3)}"
+else:
+    damage_type3 = "..."
+
+damage_type2 = f"{damage_type2} {get_custom_emoji(damage_type2)}"
+#damage_type3 = f"{damage_type3} {get_custom_emoji(damage_type3)}"
+
+special_effect_elements = soup.find_all('div', class_='mw-collapsible')
+
+special_effect_printed = False
+
+for effect in special_effect_elements:
+    if effect.get('style') == 'display: none;':
+        special_effect = effect.find('div', class_='game-tooltip__container game-font-face')
+        if special_effect:
+            special_effect_text = special_effect.text.strip()
+
+            # Check if the special effect has already been printed
+            if not special_effect_printed:
+                #print(special_effect_text)
+                special_effect_printed = True
