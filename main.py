@@ -3,21 +3,53 @@ from anime_adventures import *
 from dotenv import load_dotenv
 from discord import Spotify
 from characterai import PyAsyncCAI
+from evolution_mappings import evolution_mappings
+import traceback
 import asyncio
 import discord
 import random
+import ast
 import os
 
 intents = discord.Intents.all()
 
 load_dotenv()
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.environ['TOKEN']
 client = commands.Bot(command_prefix='Jarvis ', description="Test Bot", intents=intents)
 ANILIST_BASE_URL = 'https://graphql.anilist.co'
-chai_token = os.getenv("CHAI_TOKEN")
+chai_token = os.environ['CHAI_TOKEN']
+
+@client.command(name='probabilities', help='Check out the probability of any number!')
+async def probabilities(ctx, percentage: float):
+    if percentage <= 0 or percentage > 100:
+        await ctx.send('Invalid percentage. Please provide a value between 0 and 100.')
+        return
+    
+    chance = 1 / (percentage / 100)
+    response = f'1 in {int(chance):,} chances'
+    await ctx.send(response)
+
+@client.command(name='shiny', help='Test out your luck using this command!')
+async def shiny(ctx, variant: str = None):
+    if variant == 'secret':
+        chance = random.random()  # Generates a random number between 0 and 1
+        if chance <= 0.03:  # 3% chance
+            response = "You `WILL` get a shiny. | 3% Chance for a shiny secret unit if you're host, and if you have the shiny hunter gamepass."
+        else:
+            response = "You will `NOT` get a shiny. | 3% Chance for a shiny secret unit if you're host, and if you have the shiny hunter gamepass."
+    elif variant == 'mythical':
+        chance = random.random()  # Generates a random number between 0 and 1
+        if chance <= 0.00015:  # 0.015% chance
+            response = 'You `WILL` get a shiny mythical. | 0.015% Chance for a shiny mythical unit if you have the shiny hunter gamepass.'
+        else:
+            response = 'You will `NOT` get a shiny mythical. | 0.015% Chance for a shiny mythical unit if you have the shiny hunter gamepass.'
+    else:
+        response = 'Invalid variant. Available variants: `secret`, `mythical`'
+
+    await ctx.send(response)
 
 @client.command()
-async def talk(ctx, *, message: str):
+async def talk(ctx, *, message: str, help='Talk with Jarvis!'):
     async with asyncio.timeout(60):
         cai_client = PyAsyncCAI(chai_token)
         await cai_client.start()
@@ -37,7 +69,7 @@ async def talk(ctx, *, message: str):
                 cai_client.chat.send_message(
                     char, message, history_external_id=history_id, tgt=tgt
                 ),
-                timeout=30,
+                timeout=30,  # Adjust the timeout period as needed
             )
             name = data["src_char"]["participant"]["name"]
             text = data["replies"][0]["text"]
@@ -49,14 +81,10 @@ async def talk(ctx, *, message: str):
         except asyncio.TimeoutError:
             await ctx.send("The conversation timed out.")
 
+# prints when the bot is running/online
 @client.event
 async def on_ready():
     print(f'{client.user.name} is now running.')
-
-evolution_mappings = {
-    'Akeno evo': 'Akena (Fallen Angel)',
-    'Akena evo': 'Akena (Fallen Angel)'
-}
 
 @client.command(name='8ball', help='Ask the 8-ball a question and receive a yes or no answer!')
 async def eight_ball(ctx, *, question: str):
@@ -131,18 +159,24 @@ async def fetch_anime_info(ctx, *, anime_name):
 # Web scraping for animeadventures.fandom.com
 @client.command(name='character_info',aliases=['aa', 'char_info', 'Aa'], help='Fetch information about an Anime Adventures character.')
 async def character_info(ctx, *, character_name):
-    original_character_name = character_name  # Store the original input for later use
-    print(original_character_name)
+    original_character_name = character_name
+    print("Original Character Name:", original_character_name)
     character_name_lower = character_name.lower()
+    if character_name_lower in evolution_mappings:
+        character_name = evolution_mappings[character_name_lower]
+    else:
+        character_name = character_name.title().replace(" ", "_")
+
     for key in evolution_mappings.keys():
-        if character_name_lower == key:
+        if character_name_lower == key.lower():
             character_name = evolution_mappings[key]
             break
 
-    character = character_name.title().replace(" ", "_")
     print(f"User's message: {character_name}")
+    formatted_materials_str = None  # Define the variable outside the try block
+
     try:
-        html_text = requests.get(f'https://animeadventures.fandom.com/wiki/{character}').text
+        html_text = requests.get(f'https://animeadventures.fandom.com/wiki/{character_name}').text
         soup = BeautifulSoup(html_text, 'html.parser')
 
         #character name | Metal Knight (Bofoi)
@@ -186,35 +220,102 @@ async def character_info(ctx, *, character_name):
 
 
         def format_material(material):
-            quantity, item = material
-            item = item.strip()
+            if len(material) == 2:
+                quantity, item = material
+                item = item.strip()
 
-            if item.startswith("Star Fruit"):
-                base_item = "StarFruit"
+                if item.startswith("Star Fruit"):
+                    base_item = "StarFruit"
+                    if item in custom_emojis:
+                        emoji_id = custom_emojis[item]
+                        emoji_name = base_item + "".join([word.capitalize().replace('(', '_').replace(')', '').replace("'", "") for word in item.split()[2:]])
+                        return f"{quantity}x {item} <:{emoji_name}:{emoji_id}>"
+
                 if item in custom_emojis:
                     emoji_id = custom_emojis[item]
-                    emoji_name = base_item + "".join([word.capitalize().replace('(', '_').replace(')', '').replace("'", "") for word in item.split()[2:]])
+                    emoji_name = item.replace(' ', '_').replace("'", "")
                     return f"{quantity}x {item} <:{emoji_name}:{emoji_id}>"
-
-            if item in custom_emojis:
-                emoji_id = custom_emojis[item]
-                emoji_name = item.replace(' ', '_').replace("'", "") 
-                return f"{quantity}x {item} <:{emoji_name}:{emoji_id}>"
+                else:
+                    return f"{quantity}x {item}"
             else:
-                return f"{quantity}x {item}"
+                return "Invalid material format."
     
-        required_items_row = soup.select('table.article-table tr')[0]
-        td_elements = required_items_row.find_all('td')
-        materials = td_elements[1].get_text(strip=False).replace('Required Items:', '').replace('\n', '').split('x')
-        materials = [material.strip() for material in materials if material.strip()]
+        required_items_row = soup.select('table.article-table tr')
+        if required_items_row:
+            td_elements = required_items_row[0].find_all('td')
+            if len(td_elements) > 1:
+                materials_text = td_elements[1].get_text(strip=False).replace('Required Items:', '').replace('\n', '')
+                if materials_text:
+                    materials = materials_text.split('x')
+                    materials = [material.strip() for material in materials if material.strip()]
 
-        formatted_materials = [format_material(material.split(maxsplit=1)) for material in materials]
-        formatted_materials_str = '\n'.join(formatted_materials)
+                    formatted_materials = [format_material(material.split(maxsplit=1)) for material in materials]
+                    formatted_materials_str = '\n'.join(formatted_materials)
+                else:
+                    formatted_materials_str = "None"
+            else:
+                formatted_materials_str = "None"
+        else:
+            formatted_materials_str = "None"
 
+        damage_type = soup.find_all('div', class_='pi-data-value pi-font')
+        damage_type1 = damage_type[4].get_text(strip=True) if captions else "..."
+        damage_type2 = damage_type[5].get_text(strip=True) if captions else "..."
+        damage_type3 = damage_type[6].get_text(strip=True) if captions else "..."
+
+        def get_custom_emoji(name):
+            return f"<:{name}:{custom_emojis.get(name, '')}>"
+
+        if damage_type3 in custom_emojis:
+            damage_type3 = f"{damage_type3} {get_custom_emoji(damage_type3)}"
+        else:
+            damage_type3 = "..."
+
+        damage_type2 = f"{damage_type2} {get_custom_emoji(damage_type2)}"
+
+        special_effect_text = "Attacks 1 time in a single attack."
+        special_effect_elements = soup.find_all('div', class_='mw-collapsible')
+
+        special_effect_printed = False
+
+        for effect in special_effect_elements:
+            if effect.get('style') == 'display: none;':
+                special_effect = effect.find('div', class_='game-tooltip__container game-font-face')
+                if special_effect:
+                    special_effect_text = special_effect.text.strip()
+
+            # Check if the special effect has already been printed
+                    if not special_effect_printed:
+                        #print(special_effect_text)
+                        special_effect_printed = True
+        with open("storage.py", "r", encoding="latin-1") as storage_file:
+            for line in storage_file:
+                data = ast.literal_eval(line)
+                if data.get("character_name") == character_name:
+                    # Character data found in storage, send the stored values
+                    embed = discord.Embed(title=data["character_name"], description=data["description"] + "test", color=discord.Color.blue())
+                    if formatted_materials_str != "None":
+                        embed.add_field(name="**Materials:**", value=data["formatted_materials_str"], inline=True)
+
+                    embed.add_field(name="**Information:**", value="`Tower Type:` " + data["damage_type1"] + "\n`Damage Type:` " + data["damage_type2"] + "\n`Secondary Damage Type:` " + data["damage_type3"] + "\n`Additional Information:` " + data["special_effect"], inline=True)
+                    embed.add_field(name="**Normal Version:**", value="*"+data["caption1"]+"*", inline=False)
+                    embed.set_image(url=data["non_shiny_image"])
+                    embed.set_footer(text="Anime Adventures Web Scraper powered by Jarvis.", icon_url="https://media.discordapp.net/attachments/1130781031511900252/1131308552330432632/aa.png")
+                    embedVar = discord.Embed(description="**Shiny Version:**\n*"+data["caption2"]+"*",color=discord.Color.blue())
+                    embedVar.set_image(url=data["shiny_image"])
+                    embedVar.set_footer(text="Anime Adventures Web Scraper powered by Jarvis.", icon_url="https://media.discordapp.net/attachments/1130781031511900252/1131308552330432632/aa.png")
+
+                    await ctx.send(embed=embed)
+                    await ctx.send(embed=embedVar)
+
+                    return
         embed = discord.Embed(title=character_name,description=modified_text,color=discord.Color.blue())
-        embed.add_field(name="**Materials:**", value=formatted_materials_str, inline=False)
-        embed.add_field(name="**Results:**", value=character_evolution_name, inline=False)
-        embed.add_field(name="**Normal Version:**", value="*"+caption1+"*", inline=True)
+
+        if formatted_materials_str != "None":
+            embed.add_field(name="**Materials:**", value=formatted_materials_str, inline=True)
+            
+        embed.add_field(name="**Information:**", value="`Tower Type:` "+damage_type1 + "\n`Damage Type:` " + damage_type2 + "\n`Secondary Damage Type:` " + damage_type3 + "\n`Additional Information:` " + special_effect_text, inline=True)
+        embed.add_field(name="**Normal Version:**", value="*"+caption1+"*", inline=False)
         embed.set_image(url=non_shiny_image)
         embed.set_footer(text="Anime Adventures Web Scraper powered by Jarvis.", icon_url="https://media.discordapp.net/attachments/1130781031511900252/1131308552330432632/aa.png")
         embedVar = discord.Embed(description="**Shiny Version:**\n*"+caption2+"*",color=discord.Color.blue())
@@ -224,9 +325,46 @@ async def character_info(ctx, *, character_name):
         await ctx.send(embed=embed)
         await ctx.send(embed=embedVar)
 
+        if ctx.author.id == 544776631672242176:  # Replace SPECIFIC_USER_ID with the actual ID of the specific user
+            await ctx.send("Do you want to save the data? (y/n)")
+
+            def check_response(message):
+                return message.author == ctx.author and message.channel == ctx.channel and message.content.lower() in ['y', 'n']
+            
+            try:
+                response = await client.wait_for('message', check=check_response, timeout=30)
+
+                if response.content.lower() == 'y':
+                # Save all the data into storage.py
+                    data_to_save = {
+                        "character_name": character_name,
+                        "formatted_materials_str": formatted_materials_str,   
+                        "description": modified_text,
+                        "non_shiny_image": non_shiny_image,
+                        "shiny_image": shiny_image,
+                        "special_effect": special_effect_text,
+                        "damage_type1": damage_type1,
+                        "damage_type2": damage_type2,
+                        "damage_type3": damage_type3,
+                        "caption1": caption1,
+                        "caption2": caption2
+                    }
+
+                # Save data to storage.py
+                    with open("storage.py", "a") as storage_file:
+                        storage_file.write(str(data_to_save) + "\n")
+
+                    await ctx.send("Data saved successfully!")
+                else:
+                    await ctx.send("Data not saved.")
+
+            except asyncio.TimeoutError:
+                await ctx.send("You didn't respond in time. Data not saved.")
+
     except Exception as e:
         print(f"Error fetching information for {character_name}: {e}")
-        await ctx.send("Character not found or error occurred while fetching information.")
+        traceback.print_exc()
+        await print("Character not found or error occurred while fetching information.")
 
 # check what the person's spotify is playing
 @client.command(name='spotify', help='Find out what songs a person is listening to.')
