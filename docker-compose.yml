@@ -1,6 +1,6 @@
 version: "3.3"
 services:
-    bot:
-        container_name: bot
+    jarvis:
+        container_name: jarvis
         build: .
         env_file: ./.env
